@@ -31,6 +31,7 @@ function App() {
   const [totalTrials, setTotalTrials] = useState(0);
   const [lastCycleWallSeconds, setLastCycleWallSeconds] = useState<number | null>(null);
   const [phaseSeconds, setPhaseSeconds] = useState({ counting: 0, punching: 0, binding: 0 });
+  const [phaseWallSeconds, setPhaseWallSeconds] = useState({ counting: 0, punching: 0, binding: 0 });
   const [errorLog, setErrorLog] = useState<SimulationErrorEntry[]>([]);
   const [holePinchMm, setHolePinchMm] = useState(0.3);
   const [edgeMarginMm, setEdgeMarginMm] = useState(6);
@@ -98,13 +99,21 @@ function App() {
     prevStageRef.current = stage;
   }, []);
 
-  const handleSimulationTick = useCallback((deltaSim: number, stage: number) => {
-    if (deltaSim <= 0) return;
-    setPhaseSeconds((p) => ({
-      counting: p.counting + (stage === STAGE_COUNTING ? deltaSim : 0),
-      punching: p.punching + (stage === STAGE_PUNCHING ? deltaSim : 0),
-      binding: p.binding + (stage === STAGE_BINDING ? deltaSim : 0),
-    }));
+  const handleSimulationTick = useCallback((deltaSim: number, deltaWall: number, stage: number) => {
+    if (deltaSim > 0) {
+      setPhaseSeconds((p) => ({
+        counting: p.counting + (stage === STAGE_COUNTING ? deltaSim : 0),
+        punching: p.punching + (stage === STAGE_PUNCHING ? deltaSim : 0),
+        binding: p.binding + (stage === STAGE_BINDING ? deltaSim : 0),
+      }));
+    }
+    if (deltaWall > 0) {
+      setPhaseWallSeconds((p) => ({
+        counting: p.counting + (stage === STAGE_COUNTING ? deltaWall : 0),
+        punching: p.punching + (stage === STAGE_PUNCHING ? deltaWall : 0),
+        binding: p.binding + (stage === STAGE_BINDING ? deltaWall : 0),
+      }));
+    }
   }, []);
 
   const handleResetStats = useCallback(() => {
@@ -114,6 +123,7 @@ function App() {
     setTotalTrials(0);
     setLastCycleWallSeconds(null);
     setPhaseSeconds({ counting: 0, punching: 0, binding: 0 });
+    setPhaseWallSeconds({ counting: 0, punching: 0, binding: 0 });
     setBatchSetsCompleted(0);
     trayBooksStackedMirrorRef.current = 0;
     setErrorLog([]);
@@ -170,6 +180,7 @@ function App() {
     totalTrials,
     lastCycleWallSeconds,
     phaseSeconds,
+    phaseWallSeconds,
     errorLog,
     holePinchMm,
     edgeMarginMm,

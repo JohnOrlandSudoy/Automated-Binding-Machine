@@ -35,6 +35,8 @@ export interface SimulationPanelProps {
   totalTrials: number;
   lastCycleWallSeconds: number | null;
   phaseSeconds: { counting: number; punching: number; binding: number };
+  /** Real wall time spent in each phase this session (paused time excluded). */
+  phaseWallSeconds: { counting: number; punching: number; binding: number };
   errorLog: SimulationErrorEntry[];
   /** Punching — measurable (mm). */
   holePinchMm: number;
@@ -50,6 +52,17 @@ function formatSeconds(s: number): string {
   return `${s.toFixed(2)} s`;
 }
 
+/** Clock-style duration: `MM:SS.cc` or `H:MM:SS.cc` when ≥ 1 h. */
+function formatClockFromSeconds(totalSeconds: number): string {
+  const t = Math.max(0, totalSeconds);
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const sec = t - h * 3600 - m * 60;
+  const secStr = sec.toFixed(2);
+  const mPart = `${String(m).padStart(2, '0')}:${secStr.padStart(5, '0')}`;
+  return h > 0 ? `${h}:${mPart}` : mPart;
+}
+
 const SimulationPanel: FC<SimulationPanelProps> = ({
   targetPages,
   batchSets,
@@ -62,6 +75,7 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
   totalTrials,
   lastCycleWallSeconds,
   phaseSeconds,
+  phaseWallSeconds,
   errorLog,
   holePinchMm,
   edgeMarginMm,
@@ -337,6 +351,25 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
           <div className="flex justify-between gap-2">
             <span className="text-gray-400">Binding</span>
             <span className="font-mono">{formatSeconds(phaseSeconds.binding)}</span>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-cyan-500/20 bg-cyan-950/15 p-2.5 space-y-1.5 text-xs">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-cyan-300/90">Phase clock (wall time)</div>
+          <p className="text-[10px] leading-snug text-gray-500">
+            Real seconds habang tumatak ang animation; hindi kasama ang pause.
+          </p>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Counting</span>
+            <span className="font-mono text-cyan-200/95">{formatClockFromSeconds(phaseWallSeconds.counting)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Punching</span>
+            <span className="font-mono text-cyan-200/95">{formatClockFromSeconds(phaseWallSeconds.punching)}</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Binding</span>
+            <span className="font-mono text-cyan-200/95">{formatClockFromSeconds(phaseWallSeconds.binding)}</span>
           </div>
         </div>
 

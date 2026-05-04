@@ -361,8 +361,8 @@ interface MachineViewerProps {
   onPausedChange: (paused: boolean) => void;
   onSpeedChange: (speed: number) => void;
   onHoveredComponent: (name: string | null) => void;
-  /** Simulated timeline delta (seconds) × speed, 0 when paused — for phase timers. */
-  onSimulationTick?: (deltaSim: number, stage: number) => void;
+  /** Simulated timeline delta (seconds) × speed; wall delta = real frame seconds when not paused. */
+  onSimulationTick?: (deltaSim: number, deltaWall: number, stage: number) => void;
   /** Sync ref — books stacked on tray (updated same tick as cycle complete). */
   trayBooksStackedRef: MutableRefObject<number>;
   /** Max books to pool in scene (from target sets / batch). */
@@ -1171,10 +1171,10 @@ export default function MachineViewer({
 
       const state = controllerRef.current.update(performance.now());
       const timelineFactor = TOTAL_DURATION / manualCycleSecondsRef.current;
-      const deltaSim = controllerRef.current.isPaused()
-        ? 0
-        : delta * controllerRef.current.getSpeed() * timelineFactor;
-      onSimulationTick?.(deltaSim, state.currentStage);
+      const paused = controllerRef.current.isPaused();
+      const deltaWall = paused ? 0 : delta;
+      const deltaSim = paused ? 0 : delta * controllerRef.current.getSpeed() * timelineFactor;
+      onSimulationTick?.(deltaSim, deltaWall, state.currentStage);
 
       // Notify parent
       onStageChange(state.currentStage, state.stageProgress);
