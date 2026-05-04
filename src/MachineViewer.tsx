@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
-import { StageController } from './StageController';
+import { StageController, TOTAL_DURATION } from './StageController';
 import { A5_ASPECT_LONG_OVER_SHORT } from './simulation/constants';
 
 /** Fusion-style CAD exports are usually Z-up; Three.js uses Y-up (grid/floor on XZ). */
@@ -367,6 +367,8 @@ interface MachineViewerProps {
   trayBooksStackedRef: MutableRefObject<number>;
   /** Max books to pool in scene (from target sets / batch). */
   batchBookCapacity: number;
+  /** Target wall-clock duration for one full cycle at 1× speed (180–300 s). */
+  manualCycleSeconds: number;
   action: string | null;
   onActionConsumed: () => void;
 }
@@ -385,6 +387,7 @@ export default function MachineViewer({
   onSimulationTick,
   trayBooksStackedRef,
   batchBookCapacity,
+  manualCycleSeconds,
   action,
   onActionConsumed,
 }: MachineViewerProps) {
@@ -422,6 +425,12 @@ export default function MachineViewer({
   const bookStackSlotsRef = useRef<THREE.Group[]>([]);
   const batchBookCapacityRef = useRef(batchBookCapacity);
   batchBookCapacityRef.current = batchBookCapacity;
+  const manualCycleSecondsRef = useRef(manualCycleSeconds);
+  manualCycleSecondsRef.current = manualCycleSeconds;
+
+  useEffect(() => {
+    controllerRef.current.setManualCycleWallSeconds(manualCycleSeconds);
+  }, [manualCycleSeconds]);
 
   const layoutTrayBookStack = useCallback(() => {
     const path = paperPathRef.current;
@@ -1161,7 +1170,10 @@ export default function MachineViewer({
       const delta = clock.getDelta();
 
       const state = controllerRef.current.update(performance.now());
-      const deltaSim = controllerRef.current.isPaused() ? 0 : delta * controllerRef.current.getSpeed();
+      const timelineFactor = TOTAL_DURATION / manualCycleSecondsRef.current;
+      const deltaSim = controllerRef.current.isPaused()
+        ? 0
+        : delta * controllerRef.current.getSpeed() * timelineFactor;
       onSimulationTick?.(deltaSim, state.currentStage);
 
       // Notify parent

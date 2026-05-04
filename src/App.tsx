@@ -1,7 +1,13 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import MachineViewer from './MachineViewer';
 import UIOverlay from './controls/UIOverlay';
-import { clampBatchSets, clampPageCount } from './simulation/metrics';
+import {
+  clampBatchSets,
+  clampPageCount,
+  clampHolePinchMm,
+  clampEdgeMarginMm,
+  clampManualCycleSeconds,
+} from './simulation/metrics';
 import { simulateActualCount } from './simulation/simulateRun';
 import { STAGE_BINDING, STAGE_COUNTING, STAGE_PUNCHING } from './simulation/constants';
 import { createCountingErrorEntry } from './simulation/errorMessage';
@@ -26,6 +32,9 @@ function App() {
   const [lastCycleWallSeconds, setLastCycleWallSeconds] = useState<number | null>(null);
   const [phaseSeconds, setPhaseSeconds] = useState({ counting: 0, punching: 0, binding: 0 });
   const [errorLog, setErrorLog] = useState<SimulationErrorEntry[]>([]);
+  const [holePinchMm, setHolePinchMm] = useState(0.3);
+  const [edgeMarginMm, setEdgeMarginMm] = useState(6);
+  const [manualCycleSeconds, setManualCycleSeconds] = useState(240);
 
   const prevStageRef = useRef<number | null>(null);
   const cycleStartWallRef = useRef<number | null>(null);
@@ -125,6 +134,18 @@ function App() {
     });
   }, []);
 
+  const handleHolePinchCommit = useCallback((value: number) => {
+    setHolePinchMm(clampHolePinchMm(value));
+  }, []);
+
+  const handleEdgeMarginCommit = useCallback((value: number) => {
+    setEdgeMarginMm(clampEdgeMarginMm(value));
+  }, []);
+
+  const handleManualCycleCommit = useCallback((value: number) => {
+    setManualCycleSeconds(clampManualCycleSeconds(value));
+  }, []);
+
   const handlePausedChange = useCallback((paused: boolean) => {
     setIsPaused(paused);
   }, []);
@@ -150,6 +171,12 @@ function App() {
     lastCycleWallSeconds,
     phaseSeconds,
     errorLog,
+    holePinchMm,
+    edgeMarginMm,
+    manualCycleSeconds,
+    onHolePinchMmCommit: handleHolePinchCommit,
+    onEdgeMarginMmCommit: handleEdgeMarginCommit,
+    onManualCycleSecondsCommit: handleManualCycleCommit,
     onResetStats: handleResetStats,
   };
 
@@ -163,6 +190,7 @@ function App() {
         onSimulationTick={handleSimulationTick}
         trayBooksStackedRef={trayBooksStackedMirrorRef}
         batchBookCapacity={batchSets}
+        manualCycleSeconds={manualCycleSeconds}
         action={action}
         onActionConsumed={handleActionConsumed}
       />

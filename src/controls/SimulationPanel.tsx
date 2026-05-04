@@ -3,10 +3,19 @@ import { ClipboardList, RotateCcw } from 'lucide-react';
 import {
   PAGE_COUNT_MAX,
   PAGE_COUNT_MIN,
+  HOLE_PINCH_MM_MIN,
+  HOLE_PINCH_MM_MAX,
+  EDGE_MARGIN_MM_MIN,
+  EDGE_MARGIN_MM_MAX,
+  MANUAL_CYCLE_SECONDS_MIN,
+  MANUAL_CYCLE_SECONDS_MAX,
 } from '../simulation/constants';
 import {
   clampBatchSets,
   clampPageCount,
+  clampHolePinchMm,
+  clampEdgeMarginMm,
+  clampManualCycleSeconds,
   countingDeviation,
   sheetCountingAccuracyPercent,
   successRatePercent,
@@ -27,6 +36,13 @@ export interface SimulationPanelProps {
   lastCycleWallSeconds: number | null;
   phaseSeconds: { counting: number; punching: number; binding: number };
   errorLog: SimulationErrorEntry[];
+  /** Punching — measurable (mm). */
+  holePinchMm: number;
+  edgeMarginMm: number;
+  manualCycleSeconds: number;
+  onHolePinchMmCommit: (value: number) => void;
+  onEdgeMarginMmCommit: (value: number) => void;
+  onManualCycleSecondsCommit: (value: number) => void;
   onResetStats: () => void;
 }
 
@@ -47,10 +63,19 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
   lastCycleWallSeconds,
   phaseSeconds,
   errorLog,
+  holePinchMm,
+  edgeMarginMm,
+  manualCycleSeconds,
+  onHolePinchMmCommit,
+  onEdgeMarginMmCommit,
+  onManualCycleSecondsCommit,
   onResetStats,
 }) => {
   const [pagesDraft, setPagesDraft] = useState(String(targetPages));
   const [batchDraft, setBatchDraft] = useState(String(batchSets));
+  const [holeDraft, setHoleDraft] = useState(String(holePinchMm));
+  const [marginDraft, setMarginDraft] = useState(String(edgeMarginMm));
+  const [cycleDraft, setCycleDraft] = useState(String(manualCycleSeconds));
 
   useEffect(() => {
     setPagesDraft(String(targetPages));
@@ -59,6 +84,18 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
   useEffect(() => {
     setBatchDraft(String(batchSets));
   }, [batchSets]);
+
+  useEffect(() => {
+    setHoleDraft(String(holePinchMm));
+  }, [holePinchMm]);
+
+  useEffect(() => {
+    setMarginDraft(String(edgeMarginMm));
+  }, [edgeMarginMm]);
+
+  useEffect(() => {
+    setCycleDraft(String(manualCycleSeconds));
+  }, [manualCycleSeconds]);
 
   const accuracy = useMemo(() => {
     if (actualCount === null) return null;
@@ -93,6 +130,33 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
     onBatchSetsCommit(clampBatchSets(n));
   };
 
+  const commitHole = () => {
+    const n = parseFloat(holeDraft.replace(',', '.'));
+    if (Number.isNaN(n)) {
+      setHoleDraft(String(holePinchMm));
+      return;
+    }
+    onHolePinchMmCommit(clampHolePinchMm(n));
+  };
+
+  const commitMargin = () => {
+    const n = parseFloat(marginDraft.replace(',', '.'));
+    if (Number.isNaN(n)) {
+      setMarginDraft(String(edgeMarginMm));
+      return;
+    }
+    onEdgeMarginMmCommit(clampEdgeMarginMm(n));
+  };
+
+  const commitCycle = () => {
+    const n = parseInt(cycleDraft, 10);
+    if (Number.isNaN(n)) {
+      setCycleDraft(String(manualCycleSeconds));
+      return;
+    }
+    onManualCycleSecondsCommit(clampManualCycleSeconds(n));
+  };
+
   return (
     <div className="absolute right-6 top-[5.75rem] z-10 w-[min(22rem,calc(100vw-3rem))] max-h-[calc(100vh-8rem)] overflow-y-auto rounded-xl border border-white/15 bg-black/55 backdrop-blur-md shadow-lg shadow-black/20">
       <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2">
@@ -107,7 +171,9 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
 
       <div className="space-y-3 p-3 text-sm text-gray-200">
         <div>
-          <label className="mb-1 block text-xs text-gray-400">Target pages ({PAGE_COUNT_MIN}–{PAGE_COUNT_MAX})</label>
+          <label className="mb-1 block text-xs text-gray-400">
+            Target count — counting ({PAGE_COUNT_MIN}–{PAGE_COUNT_MAX} pages)
+          </label>
           <div className="flex gap-2">
             <input
               type="number"
@@ -139,6 +205,67 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
               {batchSetsCompleted} / {batchSets}
             </span>
           </div>
+        </div>
+
+        <div className="rounded-lg border border-orange-500/25 bg-orange-950/20 p-2.5 space-y-2 text-xs">
+          <div className="text-[11px] font-semibold uppercase tracking-wide text-orange-200/90">
+            Punching — need i-measure
+          </div>
+          <p className="text-[10px] leading-snug text-gray-400">
+            Hole pinch at edge margin (mm); parehong sakop ng punching stage sa simulation.
+          </p>
+          <div>
+            <label className="mb-1 block text-[11px] text-gray-400">
+              Hole pinch ({HOLE_PINCH_MM_MIN}–{HOLE_PINCH_MM_MAX} mm)
+            </label>
+            <input
+              type="number"
+              step={0.01}
+              min={HOLE_PINCH_MM_MIN}
+              max={HOLE_PINCH_MM_MAX}
+              value={holeDraft}
+              onChange={(e) => setHoleDraft(e.target.value)}
+              onBlur={commitHole}
+              onKeyDown={(e) => e.key === 'Enter' && commitHole()}
+              className="w-full rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-white outline-none focus:border-orange-400/40"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] text-gray-400">
+              Edge margin ({EDGE_MARGIN_MM_MIN}–{EDGE_MARGIN_MM_MAX} mm)
+            </label>
+            <input
+              type="number"
+              step={0.1}
+              min={EDGE_MARGIN_MM_MIN}
+              max={EDGE_MARGIN_MM_MAX}
+              value={marginDraft}
+              onChange={(e) => setMarginDraft(e.target.value)}
+              onBlur={commitMargin}
+              onKeyDown={(e) => e.key === 'Enter' && commitMargin()}
+              className="w-full rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-white outline-none focus:border-orange-400/40"
+            />
+          </div>
+        </div>
+
+        <div>
+          <label className="mb-1 block text-xs text-gray-400">
+            Manual machine — cycle time ({MANUAL_CYCLE_SECONDS_MIN}–{MANUAL_CYCLE_SECONDS_MAX} s)
+          </label>
+          <input
+            type="number"
+            min={MANUAL_CYCLE_SECONDS_MIN}
+            max={MANUAL_CYCLE_SECONDS_MAX}
+            step={1}
+            value={cycleDraft}
+            onChange={(e) => setCycleDraft(e.target.value)}
+            onBlur={commitCycle}
+            onKeyDown={(e) => e.key === 'Enter' && commitCycle()}
+            className="w-full rounded-lg border border-white/15 bg-white/5 px-2 py-1.5 text-white outline-none focus:border-cyan-500/50"
+          />
+          <p className="mt-1 text-[10px] text-gray-500">
+            Target na haba ng isang buong loop sa 1× speed (wall clock).
+          </p>
         </div>
 
         <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5 space-y-1.5 text-xs">
@@ -182,6 +309,18 @@ const SimulationPanel: FC<SimulationPanelProps> = ({
             <span className="font-mono text-white">
               {lastCycleWallSeconds !== null ? formatSeconds(lastCycleWallSeconds) : '—'}
             </span>
+          </div>
+          <div className="flex justify-between gap-2 border-t border-white/10 pt-1.5 mt-1">
+            <span className="text-gray-400">Target cycle (manual)</span>
+            <span className="font-mono text-cyan-200/90">{manualCycleSeconds} s</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Hole pinch</span>
+            <span className="font-mono text-orange-200/90">{holePinchMm.toFixed(3)} mm</span>
+          </div>
+          <div className="flex justify-between gap-2">
+            <span className="text-gray-400">Edge margin</span>
+            <span className="font-mono text-orange-200/90">{edgeMarginMm.toFixed(2)} mm</span>
           </div>
         </div>
 

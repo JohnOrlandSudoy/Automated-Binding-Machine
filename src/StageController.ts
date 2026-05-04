@@ -1,3 +1,8 @@
+import {
+  MANUAL_CYCLE_SECONDS_MAX,
+  MANUAL_CYCLE_SECONDS_MIN,
+} from './simulation/constants';
+
 export interface Stage {
   name: string;
   label: string;
@@ -29,6 +34,9 @@ export class StageController {
   private speed: number = 1;
   private paused: boolean = false;
   private lastTimestamp: number | null = null;
+  /** Wall-clock seconds for one full loop at speed 1× (logical timeline stays 0…TOTAL_DURATION). */
+  private manualCycleWallSeconds: number =
+    (MANUAL_CYCLE_SECONDS_MIN + MANUAL_CYCLE_SECONDS_MAX) / 2;
 
   getSpeed(): number {
     return this.speed;
@@ -54,11 +62,24 @@ export class StageController {
     this.lastTimestamp = null;
   }
 
+  setManualCycleWallSeconds(seconds: number): void {
+    if (!Number.isFinite(seconds)) return;
+    this.manualCycleWallSeconds = Math.min(
+      MANUAL_CYCLE_SECONDS_MAX,
+      Math.max(MANUAL_CYCLE_SECONDS_MIN, Math.round(seconds))
+    );
+  }
+
+  getManualCycleWallSeconds(): number {
+    return this.manualCycleWallSeconds;
+  }
+
   update(timestamp: number): StageState {
+    const timelineRate = TOTAL_DURATION / this.manualCycleWallSeconds;
     if (!this.paused) {
       if (this.lastTimestamp !== null) {
         const delta = (timestamp - this.lastTimestamp) / 1000;
-        this.elapsed += delta * this.speed;
+        this.elapsed += delta * this.speed * timelineRate;
       }
       this.lastTimestamp = timestamp;
     } else {
