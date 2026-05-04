@@ -1,6 +1,7 @@
 import React from 'react';
 import { STAGES } from '../StageController';
 import { Play, Pause, RotateCcw, Gauge } from 'lucide-react';
+import SimulationPanel, { type SimulationPanelProps } from './SimulationPanel';
 
 interface UIOverlayProps {
   currentStage: number;
@@ -8,6 +9,7 @@ interface UIOverlayProps {
   isPaused: boolean;
   speed: number;
   hoveredComponent: string | null;
+  simulation: SimulationPanelProps;
   onTogglePause: () => void;
   onReset: () => void;
   onSpeedChange: () => void;
@@ -19,6 +21,7 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
   isPaused,
   speed,
   hoveredComponent,
+  simulation,
   onTogglePause,
   onReset,
   onSpeedChange,
@@ -27,8 +30,10 @@ const UIOverlay: React.FC<UIOverlayProps> = ({
 
   return (
     <>
+      <SimulationPanel {...simulation} />
+
       {/* Title */}
-      <div className="absolute top-6 left-6 z-10">
+      <div className="absolute top-6 left-6 z-10 max-w-[min(28rem,calc(100vw-8rem))]">
         <h1 className="text-white font-bold text-xl tracking-wide drop-shadow-lg">
           Automated Paper Binding Machine
         </h1>

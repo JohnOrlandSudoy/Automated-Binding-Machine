@@ -1,14 +1,15 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, type MutableRefObject } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { StageController } from './StageController';
+import { A5_ASPECT_LONG_OVER_SHORT } from './simulation/constants';
 
 /** Fusion-style CAD exports are usually Z-up; Three.js uses Y-up (grid/floor on XZ). */
 const MODEL_UP_AXIS_FIX_X = -Math.PI / 2;
 
-/** Letter paper long / short side ratio (~279.4 mm / 215.9 mm). Footprint is resized from conveyor lane after FBX loads. */
-const BOND_ASPECT_LONG_OVER_SHORT = 279.4 / 215.9;
+/** A5 ISO footprint (long / short). Spec: paper size A5 only. */
+const BOND_ASPECT_LONG_OVER_SHORT = A5_ASPECT_LONG_OVER_SHORT;
 const BOND_PAPER_SHORT_FALLBACK = 22;
 const BOND_PAPER_LONG_FALLBACK = BOND_PAPER_SHORT_FALLBACK * BOND_ASPECT_LONG_OVER_SHORT;
 const BOND_PAPER_THICKNESS = 1.05;
@@ -89,6 +90,10 @@ function xzOnStraightFeed(path: PaperPathConfig, u: number, target: THREE.Vector
 }
 
 const paperXZScratch = new THREE.Vector3();
+const stackLayoutScratch = new THREE.Vector3();
+
+const BOOK_STACK_POOL = 48;
+const BOOK_STACK_GAP = 0.1;
 
 /** Lying flat on tray: large face on XZ, thin axis Y (stack thickness). */
 function getBoundBookFlatMetrics(paperLong: number, paperShort: number) {
@@ -356,6 +361,12 @@ interface MachineViewerProps {
   onPausedChange: (paused: boolean) => void;
   onSpeedChange: (speed: number) => void;
   onHoveredComponent: (name: string | null) => void;
+  /** Simulated timeline delta (seconds) × speed, 0 when paused — for phase timers. */
+  onSimulationTick?: (deltaSim: number, stage: number) => void;
+  /** Sync ref — books stacked on tray (updated same tick as cycle complete). */
+  trayBooksStackedRef: MutableRefObject<number>;
+  /** Max books to pool in scene (from target sets / batch). */
+  batchBookCapacity: number;
   action: string | null;
   onActionConsumed: () => void;
 }
@@ -371,6 +382,9 @@ export default function MachineViewer({
   onPausedChange,
   onSpeedChange,
   onHoveredComponent,
+  onSimulationTick,
+  trayBooksStackedRef,
+  batchBookCapacity,
   action,
   onActionConsumed,
 }: MachineViewerProps) {
@@ -404,6 +418,39 @@ export default function MachineViewer({
   const lastStageRef = useRef(-1);
   const activeOutlineRef = useRef<THREE.Mesh | null>(null);
   const paperPathRef = useRef<PaperPathConfig | null>(null);
+  const bookStackRootRef = useRef<THREE.Group | null>(null);
+  const bookStackSlotsRef = useRef<THREE.Group[]>([]);
+  const batchBookCapacityRef = useRef(batchBookCapacity);
+  batchBookCapacityRef.current = batchBookCapacity;
+
+  const layoutTrayBookStack = useCallback(() => {
+    const path = paperPathRef.current;
+    const slots = bookStackSlotsRef.current;
+    if (!path || !slots.length) return;
+    const stackN = Math.max(
+      0,
+      Math.min(trayBooksStackedRef.current, batchBookCapacityRef.current, slots.length)
+    );
+    const filled = stackN;
+    xzOnStraightFeed(path, 1, stackLayoutScratch);
+    const traySurface = path.trayRestY - BOND_PAPER_THICKNESS / 2;
+    const t = path.bookThicknessY;
+    let y = traySurface;
+    for (let i = 0; i < filled; i++) {
+      const grp = slots[i];
+      grp.visible = true;
+      y += t / 2;
+      grp.position.set(stackLayoutScratch.x, y, stackLayoutScratch.z);
+      grp.rotation.order = 'YXZ';
+      grp.rotation.x = 0;
+      grp.rotation.z = 0;
+      grp.rotation.y = path.feedYaw;
+      y += t / 2 + BOOK_STACK_GAP;
+    }
+    for (let i = filled; i < slots.length; i++) {
+      slots[i].visible = false;
+    }
+  }, [trayBooksStackedRef]);
 
   const findMeshesByName = useCallback((parent: THREE.Group, pattern: string): THREE.Mesh[] => {
     const meshes: THREE.Mesh[] = [];
@@ -818,7 +865,9 @@ export default function MachineViewer({
             const u = THREE.MathUtils.lerp(path.uSpiral, 1, t);
             xzOnStraightFeed(path, u, paperXZScratch);
             const traySurface = path.trayRestY - BOND_PAPER_THICKNESS / 2;
-            const yBook = traySurface + path.bookThicknessY / 2;
+            const stackUnder = trayBooksStackedRef.current;
+            const stackLift = stackUnder * (path.bookThicknessY + BOOK_STACK_GAP);
+            const yBook = traySurface + stackLift + path.bookThicknessY / 2;
             bookOut.position.set(paperXZScratch.x, yBook, paperXZScratch.z);
           }
           if (path) {
@@ -836,11 +885,10 @@ export default function MachineViewer({
           if (bookOut && path) {
             xzOnStraightFeed(path, 1, paperXZScratch);
             const traySurface = path.trayRestY - BOND_PAPER_THICKNESS / 2;
-            bookOut.position.set(
-              paperXZScratch.x,
-              traySurface + path.bookThicknessY / 2,
-              paperXZScratch.z
-            );
+            const stackUnder = trayBooksStackedRef.current;
+            const stackLift = stackUnder * (path.bookThicknessY + BOOK_STACK_GAP);
+            const yBook = traySurface + stackLift + path.bookThicknessY / 2;
+            bookOut.position.set(paperXZScratch.x, yBook, paperXZScratch.z);
           }
           if (redFlashRef.current) redFlashRef.current.style.opacity = '0';
           break;
@@ -853,7 +901,7 @@ export default function MachineViewer({
         targetCameraTarget.current.lerp(camTarget, 0.02);
       }
     },
-    [getMeshGroup, fireParticles]
+    [getMeshGroup, fireParticles, trayBooksStackedRef]
   );
 
   const applyOutlineEffect = useCallback((stageIndex: number) => {
@@ -1060,6 +1108,33 @@ export default function MachineViewer({
         scene.add(bookGrp);
         bookOutputRef.current = bookGrp;
 
+        const prevStackRoot = bookStackRootRef.current;
+        if (prevStackRoot) {
+          scene.remove(prevStackRoot);
+          prevStackRoot.children.forEach((ch) => disposeObjectMeshes(ch as THREE.Group));
+          bookStackSlotsRef.current = [];
+          bookStackRootRef.current = null;
+        }
+        const stackRoot = new THREE.Group();
+        stackRoot.name = 'Tray_Output_Stack';
+        const pool = BOOK_STACK_POOL;
+        const slots: THREE.Group[] = [];
+        for (let i = 0; i < pool; i++) {
+          const b = createBoundBookGroup(paperCfg.paperLong, paperCfg.paperShort);
+          b.visible = false;
+          b.traverse((ch) => {
+            if (ch instanceof THREE.Mesh) {
+              ch.castShadow = true;
+              ch.receiveShadow = true;
+            }
+          });
+          stackRoot.add(b);
+          slots.push(b);
+        }
+        bookStackSlotsRef.current = slots;
+        bookStackRootRef.current = stackRoot;
+        scene.add(stackRoot);
+
         buildComponentMap(fbx);
 
         if (loadingEl) loadingEl.style.display = 'none';
@@ -1086,6 +1161,8 @@ export default function MachineViewer({
       const delta = clock.getDelta();
 
       const state = controllerRef.current.update(performance.now());
+      const deltaSim = controllerRef.current.isPaused() ? 0 : delta * controllerRef.current.getSpeed();
+      onSimulationTick?.(deltaSim, state.currentStage);
 
       // Notify parent
       onStageChange(state.currentStage, state.stageProgress);
@@ -1094,6 +1171,7 @@ export default function MachineViewer({
 
       // Animate stages
       animateStage(state.currentStage, state.stageProgress, state.elapsedTime);
+      layoutTrayBookStack();
 
       // Outline effect on stage change
       if (state.currentStage !== lastStageRef.current) {
@@ -1148,6 +1226,13 @@ export default function MachineViewer({
         scForBook.remove(bkCleanup);
         disposeObjectMeshes(bkCleanup);
         bookOutputRef.current = null;
+      }
+      const stackRoot = bookStackRootRef.current;
+      if (stackRoot && scForBook) {
+        scForBook.remove(stackRoot);
+        stackRoot.children.forEach((ch) => disposeObjectMeshes(ch as THREE.Group));
+        bookStackRootRef.current = null;
+        bookStackSlotsRef.current = [];
       }
       window.removeEventListener('resize', onResize);
       window.removeEventListener('mousemove', onMouseMove);
